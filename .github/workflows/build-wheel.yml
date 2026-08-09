@@ -1,0 +1,107 @@
+name: build-wheel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-linux:
+    name: Build Linux wheel (Python 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up conda-forge environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          python-version: '3.11'
+          channels: conda-forge
+          channel-priority: strict
+
+      - name: Install pythonocc-core from conda-forge
+        shell: bash -l {0}
+        run: conda install -y -c conda-forge pythonocc-core=7.9.3
+
+      - name: Install packaging tools
+        shell: bash -l {0}
+        run: |
+          conda install -y -c conda-forge patchelf
+          pip install build wheel auditwheel
+
+      - name: Stage OCC.Core package (drop Display/Extend to avoid VTK/Qt weight)
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
+          echo "site-packages: $SITE_PACKAGES"
+          test -d "$SITE_PACKAGES/OCC" || { echo "OCC package not found"; exit 1; }
+          mkdir -p staging
+          cp -r "$SITE_PACKAGES/OCC" staging/OCC
+          rm -rf staging/OCC/Display staging/OCC/Extend staging/OCC/Utils
+          find staging/OCC -maxdepth 1
+
+      - name: Write packaging metadata
+        working-directory: staging
+        run: |
+          cat > pyproject.toml <<'EOF'
+          [build-system]
+          requires = ["setuptools>=61"]
+          build-backend = "setuptools.build_meta"
+
+          [project]
+          name = "pythonocc-core-wheels"
+          version = "7.9.3"
+          description = "Unofficial repackaging of the pythonocc-core conda-forge binary (OCC.Core only) as a pip-installable wheel"
+          readme = "README.md"
+          license = { text = "LGPL-2.1-only" }
+
+          [tool.setuptools.packages.find]
+          include = ["OCC*"]
+
+          [tool.setuptools.package-data]
+          "*" = ["*.so", "*.pyi"]
+          EOF
+          cp ../README.md README.md
+
+      - name: Build wheel
+        shell: bash -l {0}
+        working-directory: staging
+        run: python -m build --wheel --outdir ../dist
+
+      - name: List built wheel (pre-repair)
+        run: ls -la dist/
+
+      - name: Inspect and repair wheel with auditwheel
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          echo "--- auditwheel show (before repair) ---"
+          auditwheel show dist/*.whl || true
+          echo "--- auditwheel repair ---"
+          auditwheel repair dist/*.whl -w wheelhouse/ --plat manylinux_2_28_x86_64
+
+      - name: List repaired wheel
+        run: ls -la wheelhouse/
+
+      - name: Smoke-test import in a clean env (no conda on PATH)
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/smoketest
+          /tmp/smoketest/bin/pip install wheelhouse/*.whl
+          /tmp/smoketest/bin/python3 -c "
+          from OCC.Core.gp import gp_Pnt
+          from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+          box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+          print('OCC.Core import + basic BRep call succeeded:', box)
+          "
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: pythonocc-core-wheels-linux-py311
+          path: wheelhouse/*.whl
+          if-no-files-found: error
