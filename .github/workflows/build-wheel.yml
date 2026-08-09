@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build wheel (Python ${{ matrix.python-version }} on ${{ runner.os }})
+    name: Build wheel (Python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
