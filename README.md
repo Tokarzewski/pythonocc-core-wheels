@@ -21,9 +21,15 @@ Done:
 
 Not yet done / to validate:
 - [ ] Confirm wheel size is reasonable (only `OCC.Core` is packaged; `OCC.Display`/`OCC.Extend`, which pull in VTK/Qt, are deliberately excluded).
-- [ ] Actual PyPI publish (needs a registered project name + trusted publishing or API token).
+- [ ] An actual first publish to PyPI (the `publish` job and PyPI Trusted Publisher config are wired up; nothing has been published yet — see "Releasing" below).
 - [ ] Whether any `OCC.Core` functionality beyond basic BRep calls needs OCCT's runtime resource files / `CSF_*` environment variables that conda's activation scripts normally set up (unverified beyond the smoke test's narrow coverage).
 - [ ] Whether conda-forge actually publishes every (OS, Python version) combination in the matrix — some cells may simply not exist upstream and fail cleanly at the `conda install` step rather than indicating a bug in this repo.
+
+## Releasing
+
+Publishing to PyPI happens only on an explicit GitHub Release (never on a plain push or PR, even though those still run the full build/test matrix). Authentication uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) — no token is stored anywhere in this repo. The `publish` job in `.github/workflows/build-wheel.yml` runs in the `pypi` GitHub Environment and requires a pending publisher already configured on PyPI (Account settings → Publishing) pointing at this repo, the `build-wheel.yml` workflow, and the `pypi` environment.
+
+To cut a release: create a GitHub Release (with a matching tag, e.g. `v7.9.3`). That triggers the full 15-cell build matrix plus the `publish` job, which collects every matrix cell's wheel artifact and uploads all of them to PyPI in one pass.
 
 ## Scope
 
