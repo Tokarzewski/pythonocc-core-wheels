@@ -83,7 +83,11 @@ jobs:
           echo "--- auditwheel show (before repair) ---"
           auditwheel show dist/*.whl || true
           echo "--- auditwheel repair ---"
-          auditwheel repair dist/*.whl -w wheelhouse/ --plat manylinux_2_28_x86_64
+          # Don't pin an older manylinux tag: the runner's glibc/libstdc++ versions
+          # dictate the minimum compatible tag (verified via `auditwheel show` to be
+          # manylinux_2_39 on ubuntu-latest as of this writing). Let auditwheel pick
+          # the correct tag itself rather than guessing and failing.
+          auditwheel repair dist/*.whl -w wheelhouse/
 
       - name: List repaired wheel
         run: ls -la wheelhouse/

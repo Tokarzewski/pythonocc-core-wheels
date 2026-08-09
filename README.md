@@ -23,6 +23,10 @@ Not yet done / to validate:
 
 Only the `OCC.Core` namespace is packaged (the geometry-kernel bindings). `OCC.Display` and other visualization-related submodules are intentionally dropped from the wheel to avoid pulling in their much heavier dependency chain (VTK, Qt, etc.), since typical downstream consumers only need `OCC.Core.*`.
 
+## Known limitation: glibc/manylinux tag
+
+The wheel is built on GitHub's `ubuntu-latest` runner and its actual required platform tag is determined empirically by `auditwheel` from the linked symbol versions, rather than pinned in advance — an earlier attempt to force `manylinux_2_28` failed outright because the runner's glibc/libstdc++ versions are newer than that baseline allows. In practice this currently resolves to `manylinux_2_39_x86_64`, meaning **installing systems need a fairly recent glibc** (roughly Ubuntu 24.04+ / Debian 13+ / Fedora 40+ era). Older distros are not supported by this wheel; building inside an actual manylinux Docker container (rather than directly on the runner) would lower this requirement, but hasn't been attempted yet.
+
 ## Licensing
 
 The build scripts and CI configuration in this repository are MIT licensed (see `LICENSE`). The redistributed binaries themselves are pythonocc-core / OpenCASCADE (OCCT), both licensed under LGPL-2.1 (with the OCCT public-patent exception) — see the upstream projects for their full license terms. Redistributing these binaries is intended to remain within the terms of that license; this is not legal advice, and this repackaging effort has not been reviewed by a lawyer.
