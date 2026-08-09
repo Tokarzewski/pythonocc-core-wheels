@@ -54,11 +54,15 @@ jobs:
         shell: bash -l {0}
         run: |
           set -euo pipefail
-          SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
-          echo "site-packages: $SITE_PACKAGES"
-          test -d "$SITE_PACKAGES/OCC" || { echo "OCC package not found"; exit 1; }
+          # site.getsitepackages()[0] is unreliable across platforms -- on this
+          # Windows conda env it returned the env root itself, not
+          # <env>/Lib/site-packages, so OCC was never found there. Importing OCC
+          # directly and asking where it actually lives sidesteps that entirely.
+          OCC_DIR=$(python -c "import OCC, os; print(os.path.dirname(OCC.__file__))")
+          echo "OCC package directory: $OCC_DIR"
+          test -d "$OCC_DIR" || { echo "OCC package not found"; exit 1; }
           mkdir -p staging
-          cp -r "$SITE_PACKAGES/OCC" staging/OCC
+          cp -r "$OCC_DIR" staging/OCC
           rm -rf staging/OCC/Display staging/OCC/Extend staging/OCC/Utils
           find staging/OCC -maxdepth 1
 
