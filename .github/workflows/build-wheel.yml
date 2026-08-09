@@ -9,8 +9,13 @@ on:
 
 jobs:
   build-linux:
-    name: Build Linux wheel (Python 3.11)
+    name: Build Linux wheel (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # conda-forge's pythonocc-core-feedstock builds for these Python versions.
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v6
 
@@ -18,7 +23,7 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: latest
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
           channels: conda-forge
           channel-priority: strict
 
@@ -66,6 +71,22 @@ jobs:
           [tool.setuptools.package-data]
           "*" = ["*.so", "*.pyi"]
           EOF
+          cat > setup.py <<'EOF'
+          # The package contains prebuilt native extensions (compiled against a
+          # specific CPython ABI) copied straight from conda-forge's binary, but
+          # setuptools has no ext_modules of its own to detect that, so without
+          # this it tags the wheel "py3-none-any" -- claiming universal Python 3
+          # compatibility it doesn't actually have. Force has_ext_modules() so
+          # `build`/`wheel` produce a correct cpXY-cpXY-<platform> tag instead.
+          from setuptools import setup
+          from setuptools.dist import Distribution
+
+          class BinaryDistribution(Distribution):
+              def has_ext_modules(self):
+                  return True
+
+          setup(distclass=BinaryDistribution)
+          EOF
           cp ../README.md README.md
 
       - name: Build wheel
@@ -93,10 +114,16 @@ jobs:
       - name: List repaired wheel
         run: ls -la wheelhouse/
 
+      - name: Set up plain Python ${{ matrix.python-version }} for the smoke test
+        id: smoketest_python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
       - name: Smoke-test import in a clean env (no conda on PATH)
         run: |
           set -euo pipefail
-          python3 -m venv /tmp/smoketest
+          "${{ steps.smoketest_python.outputs.python-path }}" -m venv /tmp/smoketest
           /tmp/smoketest/bin/pip install wheelhouse/*.whl
           /tmp/smoketest/bin/python3 -c "
           from OCC.Core.gp import gp_Pnt
@@ -108,6 +135,6 @@ jobs:
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6
         with:
-          name: pythonocc-core-wheels-linux-py311
+          name: pythonocc-core-wheels-linux-py${{ matrix.python-version }}
           path: wheelhouse/*.whl
           if-no-files-found: error

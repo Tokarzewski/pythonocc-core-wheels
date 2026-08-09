@@ -10,14 +10,19 @@ Not affiliated with, endorsed by, or supported by the pythonocc-core or OpenCASC
 
 ## Status
 
-**Experimental, Linux-only, single Python version, unpublished.** Nothing is on PyPI yet. This is the first iteration of the build pipeline, wired up in `.github/workflows/build-wheel.yml`, producing a downloadable CI artifact so the approach can be validated before committing to a PyPI release.
+**Experimental, Linux-only, unpublished.** Nothing is on PyPI yet. The build pipeline in `.github/workflows/build-wheel.yml` produces a downloadable CI artifact per Python version so the approach can be validated before committing to a PyPI release.
+
+Done:
+- [x] Confirmed the wheel actually imports and runs `OCC.Core.*` calls correctly on a clean machine (no conda on PATH, a plain venv) — smoke-tested in CI with a real `OCC.Core.BRepPrimAPI_MakeBox(...).Shape()` call.
+- [x] `numpy` declared as a runtime dependency (several `OCC.Core` SWIG modules need it at import time).
+- [x] Wheel is correctly tagged `cpXY-cpXY-manylinux_...` (not `py3-none-any`) — the raw build bundles a specific-CPython-ABI native extension, so it needs `setup.py`'s `Distribution.has_ext_modules() = True` override to get setuptools to tag it as version/ABI-specific rather than falsely claiming universal Python 3 compatibility.
+- [x] Multiple Python versions: 3.10–3.14, matching conda-forge's own `pythonocc-core-feedstock` support matrix, built in parallel matrix jobs.
 
 Not yet done / to validate:
-- [ ] Confirm the wheel actually imports and runs `OCC.Core.*` calls correctly on a clean machine (no conda) — OCCT relies on some runtime resource files and `CSF_*` environment variables that conda's activation scripts normally set up; whether the specific `OCC.Core` submodules used by downstream consumers need them is unverified.
 - [ ] Confirm wheel size is reasonable (only `OCC.Core` is packaged; `OCC.Display`/`OCC.Extend`, which pull in VTK/Qt, are deliberately excluded).
 - [ ] macOS and Windows builds.
-- [ ] Multiple Python versions.
 - [ ] Actual PyPI publish (needs a registered project name + trusted publishing or API token).
+- [ ] Whether any `OCC.Core` functionality beyond basic BRep calls needs OCCT's runtime resource files / `CSF_*` environment variables that conda's activation scripts normally set up (unverified beyond the smoke test's narrow coverage).
 
 ## Scope
 
