@@ -58,6 +58,7 @@ jobs:
           description = "Unofficial repackaging of the pythonocc-core conda-forge binary (OCC.Core only) as a pip-installable wheel"
           readme = "README.md"
           license = { text = "LGPL-2.1-only" }
+          dependencies = ["numpy"]
 
           [tool.setuptools.packages.find]
           include = ["OCC*"]
