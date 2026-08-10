@@ -35,6 +35,17 @@ jobs:
         shell: bash -l {0}
         run: conda install -y -c conda-forge pythonocc-core=7.9.3
 
+      - name: Strip debug symbols from bundled OCCT dylibs (macOS)
+        if: runner.os == 'macOS'
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          # delocate-wheel (unlike auditwheel's --strip) has no built-in
+          # stripping, and it copies these dylibs from $CONDA_PREFIX/lib
+          # into the wheel as-is -- stripping them here, before that copy,
+          # is the only way to shrink them.
+          find "$CONDA_PREFIX/lib" -name "*.dylib" -exec strip -S -x {} \; 2>/dev/null || true
+
       - name: Install packaging tools (Linux)
         if: runner.os == 'Linux'
         shell: bash -l {0}
@@ -45,7 +56,17 @@ jobs:
       - name: Install packaging tools (macOS)
         if: runner.os == 'macOS'
         shell: bash -l {0}
-        run: pip install build wheel delocate
+        run: |
+          pip install build wheel delocate
+          # GitHub's macos-latest `/usr/bin/otool` and `/usr/bin/codesign` are
+          # shims that shell out to Xcode, and the runner SIGKILLs those Xcode
+          # processes, crashing delocate ("Killed: 9"). conda-forge ships
+          # standalone replacements (no Xcode needed):
+          #   - cctools -> real otool / install_name_tool
+          #   - sigtool -> real `codesign` wrapper (bin/codesign) + engine
+          # Putting $CONDA_PREFIX/bin first on PATH (the delocate step runs
+          # bash -l) makes delocate use these instead of the broken shims.
+          conda install -y -c conda-forge cctools sigtool
 
       - name: Install packaging tools (Windows)
         if: runner.os == 'Windows'
@@ -66,7 +87,31 @@ jobs:
           mkdir -p staging
           cp -r "$OCC_DIR" staging/OCC
           rm -rf staging/OCC/Display staging/OCC/Extend staging/OCC/Utils
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Same rationale as the CONDA_PREFIX/lib dylib strip above: these
+            # extension modules carry debug symbols delocate can't strip itself.
+            find staging/OCC -name "*.so" -exec strip -S -x {} \; 2>/dev/null || true
+          fi
           find staging/OCC -maxdepth 1
+
+      - name: Restrict OCC.Core to the modules topologicpy needs
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          # Full pythonocc-core ships ~312 OCC.Core SWIG modules; topologicpy's
+          # pythonocc backend only imports ~28 of them (transitive closure ~78).
+          # The STEP/IGES/DXF/Graphic3d/AIS/etc. modules that are NOT needed
+          # account for ~231 MiB of binary -- dropping them makes the wheel tiny
+          # (~30 MiB) and keeps it under PyPI's 100 MB/file limit with standard
+          # DEFLATE compression (PyPI rejects LZMA wheels, so we cannot shrink
+          # via recompression). Verified: the restricted wheel passes the full
+          # topologicpy pythonocc_backend test suite.
+          python tools/restrict_occ.py staging/OCC \
+            Bnd BOPAlgo BRep BRepAlgoAPI BRepBndLib BRepBuilderAPI BRepCheck \
+            BRepClass3d BRepExtrema BRepGProp BRepLib BRepMesh BRepPrimAPI \
+            BRepTools BRepTopAdaptor GeomAbs GeomAPI GeomLProp gp GProp \
+            ShapeFix ShapeUpgrade TColgp TopAbs TopExp TopLoc TopoDS TopTools \
+            Exception
 
       - name: Write packaging metadata
         shell: bash -l {0}
@@ -133,7 +178,11 @@ jobs:
           # dictate the minimum compatible tag (verified empirically to be
           # manylinux_2_39 on ubuntu-latest). Let auditwheel pick the correct tag
           # itself rather than guessing and failing.
-          auditwheel repair dist/*.whl -w wheelhouse/
+          # --strip: PyPI caps new projects at 100 MB/file; stripping debug
+          # symbols from the bundled OCCT shared libraries is needed to fit.
+          # --strip alone still landed at ~110 MB (over) in testing, so also
+          # max out zip compression to close the remaining gap.
+          auditwheel repair --strip --zip-compression-level 9 dist/*.whl -w wheelhouse/
 
       - name: Repair wheel (macOS, delocate)
         if: runner.os == 'macOS'
@@ -142,6 +191,12 @@ jobs:
           set -euo pipefail
           mkdir -p wheelhouse
           export DYLD_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_LIBRARY_PATH:-}"
+          # Use the real otool/codesign from conda's cctools/sigtool; the
+          # /usr/bin shims resolve via Xcode, which GitHub's runner SIGKILLs
+          # (see "Install packaging tools (macOS)").
+          export PATH="$CONDA_PREFIX/bin:$PATH"
+          echo "codesign -> $(command -v codesign)"
+          echo "otool -> $(command -v otool)"
           echo "--- delocate-listdeps (before repair) ---"
           delocate-listdeps dist/*.whl || true
           echo "--- delocate-wheel ---"
@@ -161,6 +216,19 @@ jobs:
       - name: List repaired wheel
         shell: bash -l {0}
         run: ls -la wheelhouse/
+
+      - name: Check wheel size against PyPI's 100 MB/file limit
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          for f in wheelhouse/*.whl; do
+            size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+            echo "$f: $size bytes"
+            if [ "$size" -gt 104857600 ]; then
+              echo "::error::$f is $size bytes, over PyPI's 100 MB/file limit for this project. Publish would fail at upload time."
+              exit 1
+            fi
+          done
 
       - name: Set up plain Python ${{ matrix.python-version }} for the smoke test
         id: smoketest_python

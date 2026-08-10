@@ -19,11 +19,14 @@ Done:
 - [x] Multiple Python versions: 3.10–3.14, matching conda-forge's own `pythonocc-core-feedstock` support matrix, built in parallel matrix jobs.
 - [x] Cross-platform matrix: Linux (`auditwheel`), macOS (`delocate`), Windows (`delvewheel`) — each using the packaging ecosystem's standard tool for bundling a wheel's native shared-library dependencies on that OS.
 
+Done (cont'd):
+- [x] Confirmed conda-forge publishes every (OS, Python version) combination in the matrix: all 15 cells (5 Python versions × 3 OSes) installed and built cleanly with no upstream gaps.
+- [x] Wheels stripped of debug symbols (`auditwheel repair --strip` on Linux; manual `strip -S -x` on the bundled OCCT dylibs and staged `OCC/*.so` extension modules on macOS, since `delocate-wheel` has no equivalent flag) **and recompressed with LZMA** (repaired wheels are DEFLATE; LZMA cuts the Linux wheel from ~109 MB down to ~79 MB — verified installable end-to-end) so every cell fits under PyPI's 100 MB/file limit for new projects. Windows was already under; the unstripped Linux (~117 MB) and macOS (~103 MB) were both over and failed the first real publish attempt outright (see "Releasing" below). A `Check wheel size` CI step now fails the build early if any wheel is still over 100 MB, rather than only finding out at publish time.
+- [x] macOS `delocate` repair fixed: GitHub's macos-latest `/usr/bin/otool` is a shim that resolves via `xcodebuild -find otool`, which the runner SIGKILLs ("Unexpected first line: Killed: 9"). The build now installs conda-forge's `cctools` (a real `otool`/`install_name_tool`) and puts it first on PATH so delocate never touches the broken shim.
+
 Not yet done / to validate:
-- [ ] Confirm wheel size is reasonable (only `OCC.Core` is packaged; `OCC.Display`/`OCC.Extend`, which pull in VTK/Qt, are deliberately excluded).
-- [ ] An actual first publish to PyPI (the `publish` job and PyPI Trusted Publisher config are wired up; nothing has been published yet — see "Releasing" below).
+- [ ] An actual first successful publish to PyPI (the first real attempt failed on the size limit above; retrying now that stripping is wired in — see "Releasing" below).
 - [ ] Whether any `OCC.Core` functionality beyond basic BRep calls needs OCCT's runtime resource files / `CSF_*` environment variables that conda's activation scripts normally set up (unverified beyond the smoke test's narrow coverage).
-- [ ] Whether conda-forge actually publishes every (OS, Python version) combination in the matrix — some cells may simply not exist upstream and fail cleanly at the `conda install` step rather than indicating a bug in this repo.
 
 ## Releasing
 
