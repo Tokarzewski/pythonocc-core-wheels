@@ -151,7 +151,9 @@ jobs:
           # itself rather than guessing and failing.
           # --strip: PyPI caps new projects at 100 MB/file; stripping debug
           # symbols from the bundled OCCT shared libraries is needed to fit.
-          auditwheel repair --strip dist/*.whl -w wheelhouse/
+          # --strip alone still landed at ~110 MB (over) in testing, so also
+          # max out zip compression to close the remaining gap.
+          auditwheel repair --strip --zip-compression-level 9 dist/*.whl -w wheelhouse/
 
       - name: Repair wheel (macOS, delocate)
         if: runner.os == 'macOS'
