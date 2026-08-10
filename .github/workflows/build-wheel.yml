@@ -92,6 +92,25 @@ jobs:
           fi
           find staging/OCC -maxdepth 1
 
+      - name: Restrict OCC.Core to the modules topologicpy needs
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          # Full pythonocc-core ships ~312 OCC.Core SWIG modules; topologicpy's
+          # pythonocc backend only imports ~28 of them (transitive closure ~78).
+          # The STEP/IGES/DXF/Graphic3d/AIS/etc. modules that are NOT needed
+          # account for ~231 MiB of binary -- dropping them makes the wheel tiny
+          # (~30 MiB) and keeps it under PyPI's 100 MB/file limit with standard
+          # DEFLATE compression (PyPI rejects LZMA wheels, so we cannot shrink
+          # via recompression). Verified: the restricted wheel passes the full
+          # topologicpy pythonocc_backend test suite.
+          python tools/restrict_occ.py staging/OCC \
+            Bnd BOPAlgo BRep BRepAlgoAPI BRepBndLib BRepBuilderAPI BRepCheck \
+            BRepClass3d BRepExtrema BRepGProp BRepLib BRepMesh BRepPrimAPI \
+            BRepTools BRepTopAdaptor GeomAbs GeomAPI GeomLProp gp GProp \
+            ShapeFix ShapeUpgrade TColgp TopAbs TopExp TopLoc TopoDS TopTools \
+            Exception
+
       - name: Write packaging metadata
         shell: bash -l {0}
         working-directory: staging
@@ -193,18 +212,6 @@ jobs:
       - name: List repaired wheel
         shell: bash -l {0}
         run: ls -la wheelhouse/
-
-      - name: Optimize wheel size (LZMA recompress)
-        shell: bash -l {0}
-        run: |
-          set -euo pipefail
-          # Revepair tools emit DEFLATE wheels. The bundled OCCT shared libs
-          # and OCC/Core SWIG modules are binary and compress far better with
-          # LZMA: on Linux this drops a wheel from ~109 MB (over PyPI's 100
-          # MB/file limit) to ~79 MB. Python's zipfile reads LZMA wheels fine,
-          # so it stays fully installable -- verified end-to-end. Recompressed
-          # in place, keeping the canonical filename.
-          python tools/recompress_wheel.py 'wheelhouse/*.whl'
 
       - name: Check wheel size against PyPI's 100 MB/file limit
         shell: bash -l {0}
