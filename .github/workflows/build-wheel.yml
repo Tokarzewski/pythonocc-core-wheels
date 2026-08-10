@@ -162,6 +162,14 @@ jobs:
           set -euo pipefail
           mkdir -p wheelhouse
           export DYLD_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_LIBRARY_PATH:-}"
+          # Work around a GitHub Actions macos-latest flake: /usr/bin/otool
+          # (the Xcode CLT shim) sometimes resolves its real binary via an
+          # internal `xcodebuild -find otool` call that gets SIGKILL'd,
+          # which crashes delocate with "Unexpected first line: ... Killed:
+          # 9 ... xcodebuild ... -find otool". Putting the active Xcode's
+          # own usr/bin ahead on PATH makes `otool` resolve directly,
+          # skipping that indirection entirely.
+          export PATH="$(xcode-select -p)/usr/bin:$PATH"
           echo "--- delocate-listdeps (before repair) ---"
           delocate-listdeps dist/*.whl || true
           echo "--- delocate-wheel ---"
