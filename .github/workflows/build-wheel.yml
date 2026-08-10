@@ -58,13 +58,15 @@ jobs:
         shell: bash -l {0}
         run: |
           pip install build wheel delocate
-          # conda-forge's `cctools` ships a real `otool`/`install_name_tool`.
-          # GitHub's macos-latest `/usr/bin/otool` is a shim that shells out to
-          # `xcodebuild -find otool`, which gets SIGKILL'd and crashes delocate
-          # with "Unexpected first line: ... Killed: 9 ... xcodebuild". A real
-          # otool on PATH (the delocate step runs bash -l so $CONDA_PREFIX/bin
-          # is already first) bypasses that entirely.
-          conda install -y -c conda-forge cctools
+          # GitHub's macos-latest `/usr/bin/otool` and `/usr/bin/codesign` are
+          # shims that shell out to `xcodebuild ... -find otool` / the real
+          # codesign, and the runner SIGKILLs those Xcode processes, crashing
+          # delocate ("Killed: 9"). conda-forge ships standalone replacements:
+          #   - cctools          -> real otool / install_name_tool
+          #   - sigtool-codesign -> real codesign (no Xcode needed)
+          # Putting $CONDA_PREFIX/bin first on PATH (the delocate step runs
+          # bash -l) makes delocate use these instead of the broken shims.
+          conda install -y -c conda-forge cctools sigtool-codesign
 
       - name: Install packaging tools (Windows)
         if: runner.os == 'Windows'
