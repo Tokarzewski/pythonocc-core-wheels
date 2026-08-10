@@ -198,29 +198,13 @@ jobs:
         shell: bash -l {0}
         run: |
           set -euo pipefail
-          # Auditwheel/delocate/delvewheel emit DEFLATE-compressed wheels.
-          # The bundled OCCT shared libs and OCC/Core SWIG modules are binary
-          # and compress FAR better with LZMA: on Linux this drops the wheel
-          # from ~109 MB (over PyPI's 100 MB/file limit) to ~79 MB. Python's
-          # stdlib zipfile reads LZMA wheels fine, so this stays fully
-          # installable -- we verified it end-to-end. Recompress in place,
-          # keeping the canonical wheel filename.
-          python - <<'PYEOF'
-import glob, os, tempfile, shutil, zipfile
-for src in glob.glob('wheelhouse/*.whl'):
-    out = src + '.tmp'
-    zf_in = zipfile.ZipFile(src, 'r')
-    with zipfile.ZipFile(out, 'w', zipfile.ZIP_LZMA, compresslevel=9) as zf_out:
-        for info in zf_in.infolist():
-            ni = zipfile.ZipInfo(info.filename, date_time=info.date_time)
-            ni.compress_type = zipfile.ZIP_LZMA
-            ni.external_attr = info.external_attr
-            ni.create_system = info.create_system
-            zf_out.writestr(ni, zf_in.read(info.filename))
-    zf_in.close()
-    os.replace(out, src)
-    print(src, os.path.getsize(src))
-PYEOF
+          # Revepair tools emit DEFLATE wheels. The bundled OCCT shared libs
+          # and OCC/Core SWIG modules are binary and compress far better with
+          # LZMA: on Linux this drops a wheel from ~109 MB (over PyPI's 100
+          # MB/file limit) to ~79 MB. Python's zipfile reads LZMA wheels fine,
+          # so it stays fully installable -- verified end-to-end. Recompressed
+          # in place, keeping the canonical filename.
+          python tools/recompress_wheel.py 'wheelhouse/*.whl'
 
       - name: Check wheel size against PyPI's 100 MB/file limit
         shell: bash -l {0}
