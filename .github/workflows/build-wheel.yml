@@ -59,14 +59,14 @@ jobs:
         run: |
           pip install build wheel delocate
           # GitHub's macos-latest `/usr/bin/otool` and `/usr/bin/codesign` are
-          # shims that shell out to `xcodebuild ... -find otool` / the real
-          # codesign, and the runner SIGKILLs those Xcode processes, crashing
-          # delocate ("Killed: 9"). conda-forge ships standalone replacements:
-          #   - cctools          -> real otool / install_name_tool
-          #   - sigtool-codesign -> real codesign (no Xcode needed)
+          # shims that shell out to Xcode, and the runner SIGKILLs those Xcode
+          # processes, crashing delocate ("Killed: 9"). conda-forge ships
+          # standalone replacements (no Xcode needed):
+          #   - cctools -> real otool / install_name_tool
+          #   - sigtool -> real `codesign` wrapper (bin/codesign) + engine
           # Putting $CONDA_PREFIX/bin first on PATH (the delocate step runs
           # bash -l) makes delocate use these instead of the broken shims.
-          conda install -y -c conda-forge cctools sigtool-codesign
+          conda install -y -c conda-forge cctools sigtool
 
       - name: Install packaging tools (Windows)
         if: runner.os == 'Windows'
@@ -191,10 +191,12 @@ jobs:
           set -euo pipefail
           mkdir -p wheelhouse
           export DYLD_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_LIBRARY_PATH:-}"
-          # Use the real otool from conda's cctools; the /usr/bin/otool shim
-          # resolves via `xcodebuild -find otool`, which GitHub's runner
-          # SIGKILLs, breaking delocate (see "Install packaging tools (macOS)").
+          # Use the real otool/codesign from conda's cctools/sigtool; the
+          # /usr/bin shims resolve via Xcode, which GitHub's runner SIGKILLs
+          # (see "Install packaging tools (macOS)").
           export PATH="$CONDA_PREFIX/bin:$PATH"
+          echo "codesign -> $(command -v codesign)"
+          echo "otool -> $(command -v otool)"
           echo "--- delocate-listdeps (before repair) ---"
           delocate-listdeps dist/*.whl || true
           echo "--- delocate-wheel ---"
