@@ -56,7 +56,15 @@ jobs:
       - name: Install packaging tools (macOS)
         if: runner.os == 'macOS'
         shell: bash -l {0}
-        run: pip install build wheel delocate
+        run: |
+          pip install build wheel delocate
+          # conda-forge's `cctools` ships a real `otool`/`install_name_tool`.
+          # GitHub's macos-latest `/usr/bin/otool` is a shim that shells out to
+          # `xcodebuild -find otool`, which gets SIGKILL'd and crashes delocate
+          # with "Unexpected first line: ... Killed: 9 ... xcodebuild". A real
+          # otool on PATH (the delocate step runs bash -l so $CONDA_PREFIX/bin
+          # is already first) bypasses that entirely.
+          conda install -y -c conda-forge cctools
 
       - name: Install packaging tools (Windows)
         if: runner.os == 'Windows'
@@ -162,14 +170,10 @@ jobs:
           set -euo pipefail
           mkdir -p wheelhouse
           export DYLD_LIBRARY_PATH="$CONDA_PREFIX/lib:${DYLD_LIBRARY_PATH:-}"
-          # Work around a GitHub Actions macos-latest flake: /usr/bin/otool
-          # (the Xcode CLT shim) sometimes resolves its real binary via an
-          # internal `xcodebuild -find otool` call that gets SIGKILL'd,
-          # which crashes delocate with "Unexpected first line: ... Killed:
-          # 9 ... xcodebuild ... -find otool". Putting the active Xcode's
-          # own usr/bin ahead on PATH makes `otool` resolve directly,
-          # skipping that indirection entirely.
-          export PATH="$(xcode-select -p)/usr/bin:$PATH"
+          # Use the real otool from conda's cctools; the /usr/bin/otool shim
+          # resolves via `xcodebuild -find otool`, which GitHub's runner
+          # SIGKILLs, breaking delocate (see "Install packaging tools (macOS)").
+          export PATH="$CONDA_PREFIX/bin:$PATH"
           echo "--- delocate-listdeps (before repair) ---"
           delocate-listdeps dist/*.whl || true
           echo "--- delocate-wheel ---"
@@ -189,6 +193,34 @@ jobs:
       - name: List repaired wheel
         shell: bash -l {0}
         run: ls -la wheelhouse/
+
+      - name: Optimize wheel size (LZMA recompress)
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          # Auditwheel/delocate/delvewheel emit DEFLATE-compressed wheels.
+          # The bundled OCCT shared libs and OCC/Core SWIG modules are binary
+          # and compress FAR better with LZMA: on Linux this drops the wheel
+          # from ~109 MB (over PyPI's 100 MB/file limit) to ~79 MB. Python's
+          # stdlib zipfile reads LZMA wheels fine, so this stays fully
+          # installable -- we verified it end-to-end. Recompress in place,
+          # keeping the canonical wheel filename.
+          python - <<'PYEOF'
+import glob, os, tempfile, shutil, zipfile
+for src in glob.glob('wheelhouse/*.whl'):
+    out = src + '.tmp'
+    zf_in = zipfile.ZipFile(src, 'r')
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_LZMA, compresslevel=9) as zf_out:
+        for info in zf_in.infolist():
+            ni = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            ni.compress_type = zipfile.ZIP_LZMA
+            ni.external_attr = info.external_attr
+            ni.create_system = info.create_system
+            zf_out.writestr(ni, zf_in.read(info.filename))
+    zf_in.close()
+    os.replace(out, src)
+    print(src, os.path.getsize(src))
+PYEOF
 
       - name: Check wheel size against PyPI's 100 MB/file limit
         shell: bash -l {0}
