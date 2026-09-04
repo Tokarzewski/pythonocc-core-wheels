@@ -25,7 +25,7 @@ Done:
 Not yet done / to validate:
 - [ ] Re-verify the size + smoke-test across the *remaining* matrix cells via CI (Linux/macOS × py3.10–3.14); the Linux ELF analysis above was done on the upstream conda package, not on a repaired wheel.
 - [ ] Confirm `auditwheel`/`delocate` bundle the full transitive closure of the OCCT `libTK*` libs (e.g. freetype/fontconfig pulled in via `TKOpenGl`) on the non-Windows runners — delvewheel already does this correctly on Windows.
-- [ ] An actual first publish to PyPI (the `publish` job and PyPI Trusted Publisher config are wired up; nothing has been published yet — see "Releasing" below).
+- [x] ~~An actual first publish to PyPI~~ **already happened, with a caveat:** `7.9.3` was uploaded to PyPI on 2026-08-10, but those 15 wheels are the older, **topologicpy-restricted Core-only** build (≈78 of 312 `OCC.Core` modules, no `Display`/`Extend`), produced by the pre-200MB-limit size-reduction work in PR #3. PyPI versions are immutable, so the full-namespace wheels are published as **`7.9.3.post1`** (PEP 440 post-release of the same upstream 7.9.3 binary). `pip install pythonocc-core-wheels==7.9.3.post1` is the full build; a bare `pythonocc-core-wheels==7.9.3` resolves to the old restricted set.
 - [ ] Whether any `OCC.Core` functionality beyond basic BRep calls needs OCCT's runtime resource files / `CSF_*` environment variables that conda's activation scripts normally set up (unverified beyond the smoke test's narrow coverage).
 - [ ] Whether conda-forge actually publishes every (OS, Python version) combination in the matrix — some cells may simply not exist upstream and fail cleanly at the `conda install` step rather than indicating a bug in this repo.
 
@@ -33,7 +33,9 @@ Not yet done / to validate:
 
 Publishing to PyPI happens only on an explicit GitHub Release (never on a plain push or PR, even though those still run the full build/test matrix). Authentication uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) — no token is stored anywhere in this repo. The `publish` job in `.github/workflows/build-wheel.yml` runs in the `pypi` GitHub Environment and requires a pending publisher already configured on PyPI (Account settings → Publishing) pointing at this repo, the `build-wheel.yml` workflow, and the `pypi` environment.
 
-To cut a release: create a GitHub Release (with a matching tag, e.g. `v7.9.3`). That triggers the full 15-cell build matrix plus the `publish` job, which collects every matrix cell's wheel artifact and uploads all of them to PyPI in one pass.
+To cut a release: create a GitHub Release (with a matching tag, e.g. `v7.9.3.post1`). That triggers the full 15-cell build matrix plus the `publish` job, which collects every matrix cell's wheel artifact and uploads all of them to PyPI in one pass.
+
+> **Versioning note:** PyPI's `7.9.3` is the restricted Core-only set uploaded on 2026-08-10 before the 200 MB allowance was used. It can never be replaced; full-namespace releases use the `7.9.3.postN` sequence. The next tag/release must therefore be `v7.9.3.post1` (matching the version baked into the workflow's generated `pyproject.toml`).
 
 ## Scope
 

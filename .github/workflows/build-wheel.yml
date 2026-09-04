@@ -86,7 +86,11 @@ jobs:
 
           [project]
           name = "pythonocc-core-wheels"
-          version = "7.9.3"
+          # 7.9.3 itself is already burned on PyPI (uploaded 2026-08-10 from the
+          # pre-200MB-limit workflow as a topologicpy-restricted, Core-only set of
+          # wheels -- PyPI versions are immutable). The full-namespace build is a
+          # post-release of the same upstream conda-forge 7.9.3 binary.
+          version = "7.9.3.post1"
           description = "Unofficial repackaging of the full pythonocc-core conda-forge binary (OCC.Core + OCC.Display + OCC.Extend + OCC.Wrapper) as a pip-installable wheel"
           readme = "README.md"
           license = { text = "LGPL-2.1-only" }
