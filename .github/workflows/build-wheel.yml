@@ -40,17 +40,19 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -y -c conda-forge patchelf
-          pip install build wheel auditwheel
+          # setuptools: conda-forge's python>=3.13 no longer ships it, and the
+          # --no-isolation build below needs it in-env.
+          pip install setuptools build wheel auditwheel
 
       - name: Install packaging tools (macOS)
         if: runner.os == 'macOS'
         shell: bash -l {0}
-        run: pip install build wheel delocate
+        run: pip install setuptools build wheel delocate
 
       - name: Install packaging tools (Windows)
         if: runner.os == 'Windows'
         shell: bash -l {0}
-        run: pip install build wheel delvewheel
+        run: pip install setuptools build wheel delvewheel
 
       - name: Stage the full pythonocc package (Core + Display + Extend + Wrapper)
         shell: bash -l {0}
