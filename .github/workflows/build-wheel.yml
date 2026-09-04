@@ -125,7 +125,14 @@ jobs:
       - name: Build wheel
         shell: bash -l {0}
         working-directory: staging
-        run: python -m build --wheel --outdir ../dist
+        # --no-isolation: pythonocc's binary comes prebuilt from conda-forge, so
+        # the wheel has no build-time dependencies beyond setuptools (already in
+        # the conda env). The default isolated build env is a temporary venv of
+        # the conda interpreter, and on Windows that venv's python.exe cannot
+        # resolve the conda env's DLLs (libssl/libffi; "DLL load failed while
+        # importing _ssl/_ctypes", 0xC0000135) even with Library/bin on PATH --
+        # verified locally and on windows-latest CI. Building in-env sidesteps it.
+        run: python -m build --wheel --no-isolation --outdir ../dist
 
       - name: List built wheel (pre-repair)
         shell: bash -l {0}
