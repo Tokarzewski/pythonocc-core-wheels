@@ -1,0 +1,7 @@
+# Local build artifacts (the wheel itself is produced in CI)
+dist/
+wheelhouse/
+staging/
+build/
+smoketest_venv/
+__pycache__/

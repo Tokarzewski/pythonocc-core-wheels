@@ -52,7 +52,7 @@ jobs:
         shell: bash -l {0}
         run: pip install build wheel delvewheel
 
-      - name: Stage OCC.Core package (drop Display/Extend to avoid VTK/Qt weight)
+      - name: Stage the full pythonocc package (Core + Display + Extend + Wrapper)
         shell: bash -l {0}
         run: |
           set -euo pipefail
@@ -64,8 +64,13 @@ jobs:
           echo "OCC package directory: $OCC_DIR"
           test -d "$OCC_DIR" || { echo "OCC package not found"; exit 1; }
           mkdir -p staging
+          # Ship the ENTIRE pythonocc namespace. Note: OCC.Display / OCC.Extend /
+          # OCC.Wrapper are pure-Python packages (the compiled VTK/Qt backends are
+          # optional and lazily imported, see OCC.Display.backend), so they add
+          # almost no weight here -- the geometry/visualization native libs all live
+          # in OCC.Core. There is no OCC.Utils in 7.9.x; that namespace was renamed
+          # to OCC.Wrapper upstream.
           cp -r "$OCC_DIR" staging/OCC
-          rm -rf staging/OCC/Display staging/OCC/Extend staging/OCC/Utils
           find staging/OCC -maxdepth 1
 
       - name: Write packaging metadata
@@ -80,17 +85,24 @@ jobs:
           [project]
           name = "pythonocc-core-wheels"
           version = "7.9.3"
-          description = "Unofficial repackaging of the pythonocc-core conda-forge binary (OCC.Core only) as a pip-installable wheel"
+          description = "Unofficial repackaging of the full pythonocc-core conda-forge binary (OCC.Core + OCC.Display + OCC.Extend + OCC.Wrapper) as a pip-installable wheel"
           readme = "README.md"
           license = { text = "LGPL-2.1-only" }
-          dependencies = ["numpy"]
+          # numpy: needed by several OCC.Core SWIG modules at import time (MeshDS etc.)
+          # svgwrite: upstream conda run dependency, used by OCC.Extend.DataExchange
+          #   for SVG export. VTK/Qt are NOT listed: OCC.Display's GUI backends
+          #   (PyQt5/PySide6/wx/tk) are optional and lazily imported, so the wheel
+          #   does not hard-require them.
+          dependencies = ["numpy", "svgwrite"]
 
           [tool.setuptools.packages.find]
           include = ["OCC*"]
 
           [tool.setuptools.package-data]
-          # .so on Linux/macOS, .pyd/.dll on Windows.
-          "*" = ["*.so", "*.pyi", "*.pyd", "*.dll"]
+          # .so on Linux/macOS, .pyd/.dll on Windows; plus the pure-Python
+          # OCC.Display / OCC.Extend / OCC.Wrapper assets: Qt cursor icons,
+          # the WebGl HTML template, and the PEP 561 type-marker files.
+          "*" = ["*.so", "*.pyi", "*.pyd", "*.dll", "*.png", "*.html", "py.typed"]
           EOF
           cat > setup.py <<'EOF'
           # The package contains prebuilt native extensions (compiled against a
@@ -186,6 +198,25 @@ jobs:
           from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
           box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
           print('OCC.Core import + basic BRep call succeeded:', box)
+
+          # OCC.Display: the OCCViewer rendering layer. Its GUI backends
+          # (PyQt/PySide/wx/tk) are optional and lazily imported, so this must
+          # work without any of them installed -- but it exercises the compiled
+          # OCC.Core.Visualization (Display3d) backend.
+          import OCC.Display
+          from OCC.Display.OCCViewer import Viewer3d
+          print('OCC.Display import succeeded:', Viewer3d)
+
+          # OCC.Extend: high-level helpers over OCC.Core (TopologyUtils needs
+          # numpy at import; DataExchange pulls svgwrite lazily).
+          import OCC.Extend
+          from OCC.Extend.TopologyUtils import TopologyExplorer
+          te = TopologyExplorer(box)
+          print('OCC.Extend import succeeded; faces on box:', te.number_of_faces())
+
+          # OCC.Wrapper: renamed from the old OCC.Utils namespace in 7.9.x.
+          import OCC.Wrapper
+          print('OCC.Wrapper import succeeded')
           "
 
       - name: Upload wheel artifact
